@@ -279,15 +279,37 @@ def main():
     records = parser.read_and_parse()
     
     if not records:
+        return 1
+    
+    log_filter = LogFilter(
+        method=args.method,
+        status=args.status,
+        start_time=args.start,
+        end_time=args.end
+    )
+    
+    filtered = log_filter.apply(records)
+
+    if not filtered:
         return 0
     
-    # log_filter = LogFilter(
-    #         method=args.method,
-    #         status=args.status,
-    #         start_time=args.start,
-    #         end_time=args.end
-    #     )
+    analyzer = TrafficAnalyzer(filtered)
+    
+    filter_settings = {
+        'method': args.method or 'all methods',
+        'status': args.status or 'all statuses',
+        'time_range': 'all time'
+    }
+    
+    if args.start or args.end:
+        start = datetime.fromtimestamp(args.start).isoformat() if args.start else 'start'
+        end = datetime.fromtimestamp(args.end).isoformat() if args.end else 'end'
+        filter_settings['time_range'] = f"{start} - {end}"
 
+    report = analyzer.generate_report(filter_settings, args.top)
+    print(report)
+    
+    return 0
 
 if __name__ == '__main__':
     sys.exit(main())
