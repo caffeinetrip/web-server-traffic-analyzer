@@ -1,6 +1,7 @@
 import sys
 import argparse
-from collections import Counter
+from datetime import datetime
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 @dataclass
@@ -136,23 +137,114 @@ class TrafficAnalyzer:
         }
 
     def analyze_last_24h(self):
-        pass
+        if not self.records:
+            return {'unique_ips': 0, 'requests_per_hour': {}}
+        
+        max_ts = max(i.timestamp for i in self.records)
+        cutoff = max_ts - (24 * 60 * 60)
+        
+        last_24h = [i for i in self.records if i.timestamp >= cutoff]
+        unique_ips = len(set(i.ip_address for i in last_24h))
+        
+        per_hour = defaultdict(int)
+        for i in last_24h:
+            hour = datetime.fromtimestamp(i.timestamp).hour
+            per_hour[hour] += 1
+        
+        return {
+            'unique_ips': unique_ips,
+            'requests_per_hour': dict(per_hour)
+        }
 
     def generate_report(self, filter_settings, top_n=3):
-        pass
+        lines = ["====== TRAFFIC ANALYSIS REPORT ======\n"]
+        
+        lines.append("Filter settings:")
+        
+        lines.append(f"- Time range: {filter_settings.get('time_range', 'all time')}")
+        lines.append(f"- Method filter: {filter_settings.get('method', 'all methods')}")
+        lines.append(f"- Status filter: {filter_settings.get('status', 'all statuses')}\n")
+
+
+        basic = self.calculate_basic_stats()
+        
+        lines.append("Basic statistics:")
+        lines.append(f"Total requests: {basic['total_requests']}")
+        lines.append(f"Unique IPs: {basic['unique_ips']}")
+        lines.append(f"Total data transferred: {basic['total_data']} ({format_bytes(basic['total_data'])})\n")
+        
+        methods = self.get_method_distribution()
+        lines.append("Request distribution:")
+        
+        for method in sorted(methods.keys()):
+            lines.append(f"- {method}: {methods[method]:.1f}%")
+            
+        lines.append("")
+        
+        errors = self.calculate_error_metrics()
+        lines.append("Performance metrics:")
+        lines.append(f"- Successful requests (2xx): {errors['success_2xx']}")
+        lines.append(f"- Client errors (4xx): {errors['errors_4xx']}")
+        lines.append(f"- Server errors (5xx): {errors['errors_5xx']}")
+        lines.append(f"- Average response size (2xx): {errors['avg_response_2xx']:.0f} bytes\n")
+        
+        top_ips = self.get_top_ips(top_n)
+        lines.append(f"Top {top_n} active IPs:")
+        
+        for i, (ip, count) in enumerate(top_ips, 1):
+            lines.append(f"{i}. {ip}: {count} requests")
+            
+        lines.append("")
+        
+        top_urls = self.get_top_urls(5)
+        lines.append("Top 5 requested URLs:")
+        
+        for i, (url, count) in enumerate(top_urls, 1):
+            lines.append(f"{i}. {url}: {count}")
+            
+        lines.append("")
+        
+        last_24h = self.analyze_last_24h()
+        lines.append("Recent activity (last 24h):")
+        lines.append(f"- Unique IPs: {last_24h['unique_ips']}")
+        
+        if last_24h['requests_per_hour']:
+            hourly = ', '.join(f"{h}h: {c}" for h, c in sorted(last_24h['requests_per_hour'].items()))
+            lines.append(f"- Requests per hour: [{hourly}]")
+        
+        return '\n'.join(lines)
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description='web server traffic analyzer',
         formatter_class=argparse.RawDescriptionHelpFormatter,)
+    
+    parser.add_argument('logfile', help='Path to log file')
+    parser.add_argument('--method', choices=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
+    parser.add_argument('--status', help='Status code or range (e.g. 200 or 400-499)')
+    parser.add_argument('--start', type=int, help='Start timestamp')
+    parser.add_argument('--end', type=int, help='End timestamp')
+    parser.add_argument('--top', type=int, default=3, help='Top N IPs (default: 3)')
+    
     return parser.parse_args()
 
-def format_bytes(bytes_count: int):
-    pass
 
 def main():
-    print("====== TRAFFIC ANALYSIS REPORT ======")
-    return 0
+    args = parse_arguments()
+    
+    parser = LogParser(args.logfile)
+    records = parser.read_and_parse()
+    
+    if not records:
+        return 0
+    
+    # log_filter = LogFilter(
+    #         method=args.method,
+    #         status=args.status,
+    #         start_time=args.start,
+    #         end_time=args.end
+    #     )
+
 
 if __name__ == '__main__':
     sys.exit(main())
