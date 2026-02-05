@@ -1,5 +1,6 @@
 import sys
 import argparse
+from collections import Counter
 from dataclasses import dataclass
 
 @dataclass
@@ -100,19 +101,39 @@ class TrafficAnalyzer:
         self.stats = {}
 
     def calculate_basic_stats(self):
-        pass
+        return {
+            'total_requests': len(self.records),
+            'unique_ips': len(set(i.ip_address for i in self.records)),
+            'total_data': sum(i.response_size for i in self.records)
+        }
 
     def get_top_ips(self, n=3):
-        pass
+        counter = Counter(i.ip_address for i in self.records)
+        return counter.most_common(n)
 
     def get_method_distribution(self):
-        pass
+        counter = Counter(i.http_method for i in self.records)
+        total = len(self.records)
+        
+        return {method: (count/total)*100 for method, count in counter.items()}
 
     def get_top_urls(self, n=5):
-        pass
+            counter = Counter(i.url for i in self.records)
+            return counter.most_common(n)
 
     def calculate_error_metrics(self):
-        pass
+        success = [i for i in self.records if 200 <= i.status_code < 300]
+        errors_4xx = [i for i in self.records if 400 <= i.status_code < 500]
+        errors_5xx = [i for i in self.records if 500 <= i.status_code < 600]
+        
+        avg_size = sum(r.response_size for r in success) / len(success) if success else 0
+        
+        return {
+            'success_2xx': len(success),
+            'errors_4xx': len(errors_4xx),
+            'errors_5xx': len(errors_5xx),
+            'avg_response_2xx': avg_size
+        }
 
     def analyze_last_24h(self):
         pass
