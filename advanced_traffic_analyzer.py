@@ -41,14 +41,51 @@ class LogParser:
         self.records = []
         self.parse_errors = []
 
-    def parse_log_line(self, line: str, line_number: int):
-        pass
+    def parse_log_line(self, line, line_number):
+        line = line.strip()
+        
+        if not line:
+            return None
+        
+        fields = line.split()
+        if len(fields) != 6:
+            self.parse_errors.append((line_number, line, f"Expected 6 fields, got {len(fields)}"))
+            return None
+
+        record = LogRecord(
+            timestamp=int(fields[0]),
+            ip_address=fields[1],
+            http_method=fields[2].upper(),
+            url=fields[3],
+            status_code=int(fields[4]),
+            response_size=int(fields[5])
+        )
+        
+        return record
+
 
     def read_and_parse(self):
-        pass
+        with open(self.filepath, 'r') as f:
+            line_number = 0
+            
+            for line in f:
+                line_number += 1
+                record = self.parse_log_line(line, line_number)
+                
+                if record:
+                    self.records.append(record)
+        
+        return self.records
+        
+
 
     def get_statistics(self):
-        pass
+        
+        return {
+            'total_lines': len(self.records) + len(self.parse_errors),
+            'parsed': len(self.records),
+            'errors': len(self.parse_errors)
+        }
 
 class LogFilter:
     def __init__(self, method=None, status=None, start_time=None, end_time=None):
