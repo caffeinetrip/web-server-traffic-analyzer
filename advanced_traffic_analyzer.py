@@ -14,9 +14,7 @@ def format_bytes(bytes_count: float):
     return f"{bytes_count:.1f} PB"
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description='web server traffic analyzer',
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description='web server traffic analyzer', formatter_class=argparse.RawDescriptionHelpFormatter)
     
     parser.add_argument('logfile', help='path to log file')
     parser.add_argument('--method', choices=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
@@ -112,6 +110,7 @@ class LogParser:
                 status_code=int(fields[4]),
                 response_size=int(fields[5])
             )
+            
             return record
         
         except (ValueError, IndexError) as e:
@@ -125,6 +124,7 @@ class LogParser:
                 for line in f:
                     line_number += 1
                     record = self.parse_log_line(line, line_number)
+                    
                     if record:
                         self.records.append(record)
                         
