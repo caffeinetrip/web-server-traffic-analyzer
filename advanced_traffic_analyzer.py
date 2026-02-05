@@ -10,6 +10,30 @@ class LogRecord:
     url: str
     status_code: int
     response_size: int
+    
+    def __post_init__(self):
+        if self.timestamp < 0:
+            raise ValueError(f"Invalid timestamp: {self.timestamp}")
+        
+        parts = self.ip_address.split('.')
+        if len(parts) != 4:
+            raise ValueError(f"Invalid IP format: {self.ip_address}")
+        for part in parts:
+            if not part.isdigit() or not 0 <= int(part) <= 255:
+                raise ValueError(f"Invalid IP: {self.ip_address}")
+        
+        valid_methods = {'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'}
+        if self.http_method not in valid_methods:
+            raise ValueError(f"Invalid method: {self.http_method}")
+        
+        if not self.url.startswith('/'):
+            raise ValueError(f"Invalid URL: {self.url}")
+        
+        if not 100 <= self.status_code <= 599:
+            raise ValueError(f"Invalid status: {self.status_code}")
+
+        if self.response_size < 0:
+            raise ValueError(f"Invalid size: {self.response_size}")
 
 class LogParser:
     def __init__(self, filepath: str):
@@ -41,13 +65,13 @@ class TrafficAnalyzer:
     def calculate_basic_stats(self):
         pass
 
-    def get_top_ips(self):
+    def get_top_ips(self, n=3):
         pass
 
     def get_method_distribution(self):
         pass
 
-    def get_top_urls(self):
+    def get_top_urls(self, n=5):
         pass
 
     def calculate_error_metrics(self):
@@ -62,13 +86,14 @@ class TrafficAnalyzer:
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description='web server traffic analyzer',
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter,)
     return parser.parse_args()
 
 def format_bytes(bytes_count: int):
     pass
 
 def main():
+    print("====== TRAFFIC ANALYSIS REPORT ======")
     return 0
 
 if __name__ == '__main__':
