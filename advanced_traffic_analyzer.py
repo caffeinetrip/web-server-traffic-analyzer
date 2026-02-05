@@ -4,6 +4,55 @@ from datetime import datetime
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
+def format_bytes(bytes_count: float):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_count < 1024:
+            return f"{bytes_count:.1f} {unit}"
+        
+        bytes_count /= 1024
+        
+    return f"{bytes_count:.1f} PB"
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description='web server traffic analyzer',
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    parser.add_argument('logfile', help='path to log file')
+    parser.add_argument('--method', choices=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
+    parser.add_argument('--status', help='status code or range (e.g. 200 or 400-499)')
+    parser.add_argument('--start', type=int, help='start timestamp')
+    parser.add_argument('--end', type=int, help='end timestamp')
+    parser.add_argument('--top', type=int, default=3, help='top N IPs (default: 3)')
+    
+    args = parser.parse_args()
+    
+    # validate --top
+    if args.top < 1:
+        parser.error("--top must be positive")
+    
+    # validate --status
+    if args.status:
+        if '-' in args.status:
+            try:
+                start, end = args.status.split('-')
+                s, e = int(start), int(end)
+                if s > e:
+                    parser.error("invalid status range")
+            except ValueError:
+                parser.error("invalid status format")
+        else:
+            try:
+                int(args.status)
+            except ValueError:
+                parser.error("invalid status code")
+    
+    # validate time range
+    if args.start and args.end and args.start > args.end:
+        parser.error("start time cannot be after end time")
+    
+    return args
+
 @dataclass
 class LogRecord:
     timestamp: int
@@ -13,6 +62,7 @@ class LogRecord:
     status_code: int
     response_size: int
     
+    # log validation
     def __post_init__(self):
         if self.timestamp < 0:
             raise ValueError(f"Invalid timestamp: {self.timestamp}")
@@ -45,41 +95,52 @@ class LogParser:
 
     def parse_log_line(self, line, line_number):
         line = line.strip()
-        
         if not line:
             return None
         
         fields = line.split()
         if len(fields) != 6:
-            self.parse_errors.append((line_number, line, f"Expected 6 fields, got {len(fields)}"))
+            self.parse_errors.append((line_number, line, f"expected 6 fields, got {len(fields)}"))
             return None
 
-        record = LogRecord(
-            timestamp=int(fields[0]),
-            ip_address=fields[1],
-            http_method=fields[2].upper(),
-            url=fields[3],
-            status_code=int(fields[4]),
-            response_size=int(fields[5])
-        )
+        try:
+            record = LogRecord(
+                timestamp=int(fields[0]),
+                ip_address=fields[1],
+                http_method=fields[2].upper(),
+                url=fields[3],
+                status_code=int(fields[4]),
+                response_size=int(fields[5])
+            )
+            return record
         
-        return record
-
+        except (ValueError, IndexError) as e:
+            self.parse_errors.append((line_number, line, str(e)))
+            return None
 
     def read_and_parse(self):
-        with open(self.filepath, 'r') as f:
-            line_number = 0
+        try:
+            with open(self.filepath, 'r') as f:
+                line_number = 0
+                for line in f:
+                    line_number += 1
+                    record = self.parse_log_line(line, line_number)
+                    if record:
+                        self.records.append(record)
+                        
+        except FileNotFoundError:
+            print(f"error: file not found: {self.filepath}", file=sys.stderr)
+            sys.exit(1)
             
-            for line in f:
-                line_number += 1
-                record = self.parse_log_line(line, line_number)
-                
-                if record:
-                    self.records.append(record)
+        except PermissionError:
+            print(f"error: permission denied: {self.filepath}", file=sys.stderr)
+            sys.exit(1)
+        
+        # warnings для невалідних строк
+        for line_num, line, error in self.parse_errors:
+            print(f"warning: line {line_num}: {error}", file=sys.stderr)
         
         return self.records
-        
-
 
     def get_statistics(self):
         
@@ -95,6 +156,7 @@ class LogFilter:
         self.start_time = start_time
         self.end_time = end_time
         
+        # status parsing
         if status:
             
             if '-' in status:
@@ -114,6 +176,7 @@ class LogFilter:
             self.status_end = None
 
     def apply(self, records):
+        
         filtered = records
         
         if self.method:
@@ -249,29 +312,6 @@ class TrafficAnalyzer:
         
         return '\n'.join(lines)
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description='web server traffic analyzer',
-        formatter_class=argparse.RawDescriptionHelpFormatter,)
-    
-    parser.add_argument('logfile', help='Path to log file')
-    parser.add_argument('--method', choices=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
-    parser.add_argument('--status', help='Status code or range (e.g. 200 or 400-499)')
-    parser.add_argument('--start', type=int, help='Start timestamp')
-    parser.add_argument('--end', type=int, help='End timestamp')
-    parser.add_argument('--top', type=int, default=3, help='Top N IPs (default: 3)')
-    
-    return parser.parse_args()
-
-def format_bytes(bytes_count: float):
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-        if bytes_count < 1024:
-            return f"{bytes_count:.1f} {unit}"
-        
-        bytes_count /= 1024
-        
-    return f"{bytes_count:.1f} PB"
-
 def main():
     args = parse_arguments()
     
@@ -279,6 +319,7 @@ def main():
     records = parser.read_and_parse()
     
     if not records:
+        print("error: no valid records found", file=sys.stderr)
         return 1
     
     log_filter = LogFilter(
@@ -291,8 +332,9 @@ def main():
     filtered = log_filter.apply(records)
 
     if not filtered:
+        print("no records match filters", file=sys.stderr)
         return 0
-    
+        
     analyzer = TrafficAnalyzer(filtered)
     
     filter_settings = {
