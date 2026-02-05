@@ -91,10 +91,45 @@ class LogParser:
 
 class LogFilter:
     def __init__(self, method=None, status=None, start_time=None, end_time=None):
-        pass
+        self.method = method.upper() if method else None
+        self.start_time = start_time
+        self.end_time = end_time
+        
+        if status:
+            
+            if '-' in status:
+                start, end = status.split('-')
+                self.status_start = int(start)
+                self.status_end = int(end)
+                self.status_single = None
+                
+            else:
+                self.status_single = int(status)
+                self.status_start = None
+                self.status_end = None
+                
+        else:
+            self.status_single = None
+            self.status_start = None
+            self.status_end = None
 
     def apply(self, records):
-        pass
+        filtered = records
+        
+        if self.method:
+            filtered = [r for r in filtered if r.http_method == self.method]
+        
+        if self.status_single is not None:
+            filtered = [r for r in filtered if r.status_code == self.status_single]
+        elif self.status_start is not None:
+            filtered = [r for r in filtered if self.status_start <= r.status_code <= self.status_end]
+        
+        if self.start_time:
+            filtered = [r for r in filtered if r.timestamp >= self.start_time]
+        if self.end_time:
+            filtered = [r for r in filtered if r.timestamp <= self.end_time]
+        
+        return filtered
 
 class TrafficAnalyzer:
     def __init__(self, records):
@@ -228,6 +263,14 @@ def parse_arguments():
     
     return parser.parse_args()
 
+def format_bytes(bytes_count: float):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_count < 1024:
+            return f"{bytes_count:.1f} {unit}"
+        
+        bytes_count /= 1024
+        
+    return f"{bytes_count:.1f} PB"
 
 def main():
     args = parse_arguments()
